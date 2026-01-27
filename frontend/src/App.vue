@@ -2,7 +2,7 @@
   <div class="page" :class="codeThemeClass">
     <main class="layout" :class="{ 'sidebar-hidden': !sidebarVisible }">
       <div v-if="sidebarVisible" class="sidebar-wrapper" :style="wrapperStyle">
-        <section class="sidebar card" @mouseup="onSidebarResize" @mouseleave="onSidebarResize">
+        <section ref="sidebarRef" class="sidebar card">
           <div class="sidebar-header">
             <button class="refresh" @click="fetchTree" :disabled="loading">
               {{ loading ? '刷新中...' : '刷新目录' }}
@@ -49,7 +49,7 @@
       </div>
       <button v-else class="sidebar-toggle expand" @click="toggleSidebar">&gt;</button>
 
-      <section class="content card">
+      <section ref="contentRef" class="content card">
         <div class="status" v-if="error">{{ error }}</div>
         <div v-if="selectedFile">
           <div class="preview-header">
@@ -111,7 +111,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import axios from 'axios';
 import hljs from 'highlight.js';
 import mermaid from 'mermaid';
@@ -140,6 +140,9 @@ const createFileType = ref('md');
 const sidebarVisible = ref(true);
 const sidebarWidth = ref(320);
 const sidebarHeight = ref(360);
+const sidebarRef = ref(null);
+const contentRef = ref(null);
+const resizeObserver = ref(null);
 
 const codeThemeClass = computed(() =>
   codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
@@ -398,7 +401,24 @@ watch(renderedMarkdown, async () => {
 
 onMounted(() => {
   fetchTree();
-  nextTick(() => updateSidebarMetrics());
+  nextTick(() => {
+    updateSidebarMetrics();
+    updateContentMetrics();
+    if (sidebarRef.value && contentRef.value) {
+      resizeObserver.value = new ResizeObserver(() => {
+        updateSidebarMetrics();
+        updateContentMetrics();
+      });
+      resizeObserver.value.observe(sidebarRef.value);
+      resizeObserver.value.observe(contentRef.value);
+    }
+  });
+});
+
+onBeforeUnmount(() => {
+  if (resizeObserver.value) {
+    resizeObserver.value.disconnect();
+  }
 });
 
 const toggleTheme = () => {
@@ -406,22 +426,30 @@ const toggleTheme = () => {
 };
 
 const updateSidebarMetrics = () => {
-  const element = document.querySelector('.sidebar');
+  const element = sidebarRef.value;
   if (!element) return;
   const rect = element.getBoundingClientRect();
   sidebarWidth.value = rect.width;
   sidebarHeight.value = rect.height;
 };
 
+const updateContentMetrics = () => {
+  const element = contentRef.value;
+  if (!element) return;
+  const availableWidth = window.innerWidth - sidebarWidth.value - 96;
+  element.style.maxWidth = `${Math.max(360, availableWidth)}px`;
+};
+
 const toggleSidebar = () => {
   sidebarVisible.value = !sidebarVisible.value;
   if (sidebarVisible.value) {
-    nextTick(() => updateSidebarMetrics());
+    nextTick(() => {
+      updateSidebarMetrics();
+      updateContentMetrics();
+    });
+  } else {
+    nextTick(() => updateContentMetrics());
   }
-};
-
-const onSidebarResize = () => {
-  updateSidebarMetrics();
 };
 </script>
 
@@ -626,6 +654,11 @@ const onSidebarResize = () => {
 
 .content {
   position: relative;
+  resize: both;
+  overflow: auto;
+  min-width: 360px;
+  max-width: calc(100vw - var(--sidebar-width, 320px) - 96px);
+  max-height: calc(100vh - 40px);
 }
 
 .preview-header {
@@ -637,6 +670,9 @@ const onSidebarResize = () => {
   margin-bottom: 20px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.3);
   gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .preview-title {
