@@ -49,7 +49,13 @@
       </div>
       <button v-else class="sidebar-toggle expand" @click="toggleSidebar">&gt;</button>
 
-      <section ref="contentRef" class="content card">
+      <section ref="contentRef" class="content card" :style="contentStyle">
+        <div
+          v-if="fileType === 'markdown'"
+          class="content-resizer"
+          @mousedown="startPreviewResize"
+          title="拖动调整预览宽度"
+        ></div>
         <div class="status" v-if="error">{{ error }}</div>
         <div v-if="selectedFile">
           <div class="preview-header">
@@ -146,6 +152,9 @@ const sidebarHeight = ref(360);
 const sidebarRef = ref(null);
 const contentRef = ref(null);
 const resizeObserver = ref(null);
+const contentWidth = ref(null);
+const isResizingPreview = ref(false);
+const resizeState = ref({ startX: 0, startWidth: 0 });
 
 const codeThemeClass = computed(() =>
   codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
@@ -156,6 +165,15 @@ const wrapperStyle = computed(() => ({
 const isEditable = computed(() =>
   ['markdown', 'text', 'json'].includes(fileType.value)
 );
+const contentStyle = computed(() => {
+  if (!sidebarVisible.value) {
+    return { maxWidth: '100%', width: '100%', justifySelf: 'stretch' };
+  }
+  if (contentWidth.value) {
+    return { width: `${contentWidth.value}px`, maxWidth: 'none' };
+  }
+  return {};
+});
 
 const renderer = new marked.Renderer();
 const escapeHtml = (value) =>
@@ -422,6 +440,8 @@ onBeforeUnmount(() => {
   if (resizeObserver.value) {
     resizeObserver.value.disconnect();
   }
+  window.removeEventListener('mousemove', handlePreviewResize);
+  window.removeEventListener('mouseup', stopPreviewResize);
 });
 
 const toggleTheme = () => {
@@ -441,10 +461,15 @@ const updateContentMetrics = () => {
   if (!element) return;
   if (!sidebarVisible.value) {
     element.style.maxWidth = '100%';
+    contentWidth.value = null;
     return;
   }
   const availableWidth = window.innerWidth - sidebarWidth.value - 96;
-  element.style.maxWidth = `${Math.max(360, availableWidth)}px`;
+  const maxWidth = Math.max(360, availableWidth);
+  element.style.maxWidth = `${maxWidth}px`;
+  if (contentWidth.value && contentWidth.value > maxWidth) {
+    contentWidth.value = maxWidth;
+  }
 };
 
 const toggleSidebar = () => {
@@ -457,6 +482,30 @@ const toggleSidebar = () => {
   } else {
     nextTick(() => updateContentMetrics());
   }
+};
+
+const startPreviewResize = (event) => {
+  if (!contentRef.value) return;
+  isResizingPreview.value = true;
+  const rect = contentRef.value.getBoundingClientRect();
+  resizeState.value = { startX: event.clientX, startWidth: rect.width };
+  window.addEventListener('mousemove', handlePreviewResize);
+  window.addEventListener('mouseup', stopPreviewResize);
+};
+
+const handlePreviewResize = (event) => {
+  if (!isResizingPreview.value) return;
+  const delta = resizeState.value.startX - event.clientX;
+  const availableWidth = window.innerWidth - (sidebarVisible.value ? sidebarWidth.value : 0) - 96;
+  const maxWidth = Math.max(360, availableWidth);
+  const nextWidth = Math.min(Math.max(360, resizeState.value.startWidth + delta), maxWidth);
+  contentWidth.value = nextWidth;
+};
+
+const stopPreviewResize = () => {
+  isResizingPreview.value = false;
+  window.removeEventListener('mousemove', handlePreviewResize);
+  window.removeEventListener('mouseup', stopPreviewResize);
 };
 </script>
 
@@ -500,6 +549,7 @@ const toggleSidebar = () => {
 
 .layout.sidebar-hidden .content {
   max-width: 100%;
+  justify-self: stretch;
 }
 
 .layout:not(.sidebar-hidden) {
@@ -665,13 +715,36 @@ const toggleSidebar = () => {
 
 .content {
   position: relative;
-  resize: both;
+  resize: none;
   overflow: hidden;
   min-width: 360px;
   max-width: calc(100vw - var(--sidebar-width, 320px) - 96px);
   max-height: calc(100vh - 40px);
+  height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
+  justify-self: end;
+}
+
+.content-resizer {
+  position: absolute;
+  top: 16px;
+  left: -8px;
+  width: 16px;
+  height: calc(100% - 32px);
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.content-resizer::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: rgba(148, 163, 184, 0.65);
+  border-radius: 999px;
 }
 
 .preview-header {
@@ -690,6 +763,7 @@ const toggleSidebar = () => {
   flex: 1;
   overflow: auto;
   padding-right: 8px;
+  min-height: 0;
 }
 
 .preview-title {
