@@ -1,8 +1,8 @@
 <template>
   <div class="page" :class="codeThemeClass">
     <main class="layout" :class="{ 'sidebar-hidden': !sidebarVisible }">
-      <div v-if="sidebarVisible" class="sidebar-wrapper">
-        <section class="sidebar card">
+      <div v-if="sidebarVisible" class="sidebar-wrapper" :style="wrapperStyle">
+        <section class="sidebar card" @mouseup="onSidebarResize" @mouseleave="onSidebarResize">
           <div class="sidebar-header">
             <button class="refresh" @click="fetchTree" :disabled="loading">
               {{ loading ? '刷新中...' : '刷新目录' }}
@@ -50,29 +50,28 @@
       <button v-else class="sidebar-toggle expand" @click="toggleSidebar">&gt;</button>
 
       <section class="content card">
-        <div class="content-header">
-          <div class="section-title">文件预览</div>
-          <div class="theme-toggle" v-if="fileType === 'markdown'">
-            <span>代码主题</span>
-            <button @click="toggleTheme">
-              {{ codeTheme === 'light' ? '夜间' : '白天' }}
-            </button>
-          </div>
-        </div>
         <div class="status" v-if="error">{{ error }}</div>
         <div v-if="selectedFile">
-          <div class="file-header">
-            <div>
-              <h2>{{ selectedFile.name }}</h2>
-              <p class="subtitle">{{ selectedFile.path }}</p>
+          <div class="preview-header">
+            <div class="preview-title">
+              <div class="section-title">文件预览</div>
+              <h2 class="file-name" v-if="selectedFile">{{ selectedFile.name }}</h2>
             </div>
-            <div class="actions" v-if="isEditable">
-              <button @click="toggleEdit">
-                {{ isEditing ? '取消编辑' : '编辑内容' }}
-              </button>
-              <button v-if="isEditing" class="primary" @click="saveFile" :disabled="saving">
-                {{ saving ? '保存中...' : '保存' }}
-              </button>
+            <div class="preview-actions">
+              <div class="theme-toggle" v-if="fileType === 'markdown'">
+                <span>代码主题</span>
+                <button @click="toggleTheme">
+                  {{ codeTheme === 'light' ? '夜间' : '白天' }}
+                </button>
+              </div>
+              <div class="actions" v-if="isEditable">
+                <button @click="toggleEdit">
+                  {{ isEditing ? '取消编辑' : '编辑内容' }}
+                </button>
+                <button v-if="isEditing" class="primary" @click="saveFile" :disabled="saving">
+                  {{ saving ? '保存中...' : '保存' }}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -98,7 +97,14 @@
             <pre v-else>{{ fileContent }}</pre>
           </div>
         </div>
-        <div v-else class="empty">请选择左侧目录树中的文件进行预览。</div>
+        <div v-else>
+          <div class="preview-header">
+            <div class="preview-title">
+              <div class="section-title">文件预览</div>
+            </div>
+          </div>
+          <div class="empty">请选择左侧目录树中的文件进行预览。</div>
+        </div>
       </section>
     </main>
   </div>
@@ -132,10 +138,15 @@ const fileInput = ref(null);
 const codeTheme = ref('light');
 const createFileType = ref('md');
 const sidebarVisible = ref(true);
+const sidebarWidth = ref(320);
+const sidebarHeight = ref(360);
 
 const codeThemeClass = computed(() =>
   codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
 );
+const wrapperStyle = computed(() => ({
+  '--sidebar-width': `${sidebarWidth.value}px`
+}));
 const isEditable = computed(() =>
   ['markdown', 'text', 'json'].includes(fileType.value)
 );
@@ -385,14 +396,32 @@ watch(renderedMarkdown, async () => {
   }
 });
 
-onMounted(fetchTree);
+onMounted(() => {
+  fetchTree();
+  nextTick(() => updateSidebarMetrics());
+});
 
 const toggleTheme = () => {
   codeTheme.value = codeTheme.value === 'light' ? 'dark' : 'light';
 };
 
+const updateSidebarMetrics = () => {
+  const element = document.querySelector('.sidebar');
+  if (!element) return;
+  const rect = element.getBoundingClientRect();
+  sidebarWidth.value = rect.width;
+  sidebarHeight.value = rect.height;
+};
+
 const toggleSidebar = () => {
   sidebarVisible.value = !sidebarVisible.value;
+  if (sidebarVisible.value) {
+    nextTick(() => updateSidebarMetrics());
+  }
+};
+
+const onSidebarResize = () => {
+  updateSidebarMetrics();
 };
 </script>
 
@@ -427,10 +456,15 @@ const toggleSidebar = () => {
   gap: 24px;
   align-items: start;
   position: relative;
+  padding-left: 0;
 }
 
 .layout.sidebar-hidden {
   grid-template-columns: 1fr;
+}
+
+.layout:not(.sidebar-hidden) {
+  padding-left: var(--sidebar-width, 360px);
 }
 
 .card {
@@ -443,12 +477,14 @@ const toggleSidebar = () => {
 
 .sidebar-wrapper {
   position: relative;
-  display: flex;
+  width: 0;
+  height: 0;
 }
 
 .sidebar {
-  position: sticky;
+  position: fixed;
   top: 24px;
+  left: 32px;
   max-height: calc(100vh - 40px);
   overflow: auto;
   resize: both;
@@ -476,10 +512,10 @@ const toggleSidebar = () => {
 }
 
 .sidebar-toggle.collapse {
-  position: absolute;
-  top: 120px;
-  right: -14px;
-  z-index: 3;
+  position: fixed;
+  top: 140px;
+  left: calc(var(--sidebar-width, 320px) + 20px);
+  z-index: 5;
 }
 
 .sidebar-toggle.expand {
@@ -591,30 +627,33 @@ const toggleSidebar = () => {
   position: relative;
 }
 
-.content-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.preview-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   background: white;
   padding-bottom: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+  gap: 16px;
 }
 
-.content .file-header {
+.preview-title {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-name {
+  margin: 0;
+  font-size: 1.6rem;
+  color: #0f172a;
+}
+
+.preview-actions {
+  display: flex;
   align-items: center;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-  position: sticky;
-  top: 64px;
-  background: white;
-  z-index: 1;
+  gap: 12px;
 }
 
 .theme-toggle {
