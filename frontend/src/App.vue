@@ -772,7 +772,6 @@ const stopPreviewResize = () => {
   overflow-y: auto;
   padding-right: 8px;
   min-height: 0;
-  height: 100%;
 }
 
 .preview-title {
