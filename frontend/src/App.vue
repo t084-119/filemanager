@@ -540,7 +540,7 @@ const stopPreviewResize = () => {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
   position: relative;
   padding-left: 0;
   height: calc(100vh - 64px);
@@ -577,7 +577,7 @@ const stopPreviewResize = () => {
   position: fixed;
   top: 24px;
   left: 32px;
-  max-height: calc(100vh - 40px);
+  height: calc(100vh - 40px);
   overflow: auto;
   resize: both;
   min-width: 260px;
@@ -711,8 +711,8 @@ const stopPreviewResize = () => {
 
 .tree-container {
   flex: 1;
-  min-height: 140px;
-  max-height: calc(100vh - 420px);
+  min-height: 0;
+  max-height: none;
   overflow: auto;
 }
 
@@ -768,7 +768,7 @@ const stopPreviewResize = () => {
 }
 
 .preview-body {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding-right: 8px;
   min-height: 0;
