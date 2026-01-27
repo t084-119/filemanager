@@ -54,6 +54,13 @@
   font-style: italic;
 }
 
+.code-theme-light .hljs-meta,
+.code-theme-light .hljs-operator,
+.code-theme-light .hljs-symbol,
+.code-theme-light .hljs-variable {
+  color: #0ea5e9;
+}
+
 .code-theme-dark .hljs-keyword,
 .code-theme-dark .hljs-selector-tag,
 .code-theme-dark .hljs-title,
@@ -76,4 +83,18 @@
 .code-theme-dark .hljs-comment {
   color: #94a3b8;
   font-style: italic;
+}
+
+.code-theme-dark .hljs-meta,
+.code-theme-dark .hljs-operator,
+.code-theme-dark .hljs-symbol,
+.code-theme-dark .hljs-variable {
+  color: #22d3ee;
+}
+
+.markdown pre code.hljs[data-lang="bat"],
+.markdown pre code.hljs[data-lang="jso"],
+.markdown pre code.hljs[data-lang="json"],
+.markdown pre code.hljs[data-lang="text"] {
+  border-left: 4px solid rgba(99, 102, 241, 0.6);
 }

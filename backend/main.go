@@ -95,8 +95,9 @@ func main() {
 			resp := FileResponse{Type: fileType, Content: string(data), Name: info.Name()}
 			writeJSON(w, resp)
 		case http.MethodPut:
-			if !strings.HasSuffix(strings.ToLower(filePath), ".md") {
-				writeError(w, http.StatusBadRequest, "only markdown files can be updated")
+			lower := strings.ToLower(filePath)
+			if !(strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".json")) {
+				writeError(w, http.StatusBadRequest, "only markdown/txt/json files can be updated")
 				return
 			}
 			body, err := io.ReadAll(r.Body)
@@ -321,6 +322,8 @@ func detectFileType(path string) string {
 		return "pdf"
 	case ".txt":
 		return "text"
+	case ".json":
+		return "json"
 	default:
 		return "text"
 	}

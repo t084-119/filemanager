@@ -1,42 +1,53 @@
 <template>
   <div class="page" :class="codeThemeClass">
-    <main class="layout">
-      <section class="sidebar card">
-        <div class="sidebar-header">
-          <button class="refresh" @click="fetchTree" :disabled="loading">
-            {{ loading ? '刷新中...' : '刷新目录' }}
-          </button>
-        </div>
-        <div class="path-info">
-          <span>当前目录:</span>
-          <strong>{{ currentDir || '/' }}</strong>
-        </div>
-        <div class="upload-box">
-          <input ref="fileInput" type="file" @change="onFileChange" />
-          <button @click="upload" :disabled="!uploadFile || uploading">
-            {{ uploading ? '上传中...' : '上传到当前目录' }}
-          </button>
-        </div>
-        <div class="manage-actions">
-          <button class="secondary" @click="createFolder">新建文件夹</button>
-          <button class="secondary" @click="createMarkdown">新建 Markdown</button>
-          <button
-            class="danger"
-            @click="deleteSelected"
-            :disabled="!selectedNode || selectedNode.path === ''"
-          >
-            删除选中
-          </button>
-        </div>
-        <div class="tree-container" v-if="tree">
-          <TreeNode
-            :node="tree"
-            :selected-path="selectedPath"
-            @select="selectNode"
-          />
-        </div>
-        <div class="empty" v-else>暂无目录数据</div>
-      </section>
+    <main class="layout" :class="{ 'sidebar-hidden': !sidebarVisible }">
+      <div v-if="sidebarVisible" class="sidebar-wrapper">
+        <section class="sidebar card">
+          <div class="sidebar-header">
+            <button class="refresh" @click="fetchTree" :disabled="loading">
+              {{ loading ? '刷新中...' : '刷新目录' }}
+            </button>
+          </div>
+          <div class="path-info">
+            <span>当前目录:</span>
+            <strong>{{ currentDir || '/' }}</strong>
+          </div>
+          <div class="upload-box">
+            <input ref="fileInput" type="file" @change="onFileChange" />
+            <button @click="upload" :disabled="!uploadFile || uploading">
+              {{ uploading ? '上传中...' : '上传到当前目录' }}
+            </button>
+          </div>
+          <div class="manage-actions">
+            <button class="secondary" @click="createFolder">新建文件夹</button>
+            <div class="file-create">
+              <select v-model="createFileType">
+                <option value="md">Markdown</option>
+                <option value="txt">TXT</option>
+                <option value="json">JSON</option>
+              </select>
+              <button class="secondary" @click="createFile">新建文件</button>
+            </div>
+            <button
+              class="danger"
+              @click="deleteSelected"
+              :disabled="!selectedNode || selectedNode.path === ''"
+            >
+              删除选中
+            </button>
+          </div>
+          <div class="tree-container" v-if="tree">
+            <TreeNode
+              :node="tree"
+              :selected-path="selectedPath"
+              @select="selectNode"
+            />
+          </div>
+          <div class="empty" v-else>暂无目录数据</div>
+        </section>
+        <button class="sidebar-toggle collapse" @click="toggleSidebar">&lt;</button>
+      </div>
+      <button v-else class="sidebar-toggle expand" @click="toggleSidebar">&gt;</button>
 
       <section class="content card">
         <div class="content-header">
@@ -55,11 +66,11 @@
               <h2>{{ selectedFile.name }}</h2>
               <p class="subtitle">{{ selectedFile.path }}</p>
             </div>
-            <div class="actions" v-if="fileType === 'markdown'">
+            <div class="actions" v-if="isEditable">
               <button @click="toggleEdit">
                 {{ isEditing ? '取消编辑' : '编辑内容' }}
               </button>
-              <button v-if="isEditing" class="primary" @click="saveMarkdown" :disabled="saving">
+              <button v-if="isEditing" class="primary" @click="saveFile" :disabled="saving">
                 {{ saving ? '保存中...' : '保存' }}
               </button>
             </div>
@@ -83,7 +94,8 @@
           </div>
 
           <div v-else class="text-preview">
-            <pre>{{ fileContent }}</pre>
+            <textarea v-if="isEditing" v-model="editContent" class="editor"></textarea>
+            <pre v-else>{{ fileContent }}</pre>
           </div>
         </div>
         <div v-else class="empty">请选择左侧目录树中的文件进行预览。</div>
@@ -118,9 +130,14 @@ const saving = ref(false);
 const previewRef = ref(null);
 const fileInput = ref(null);
 const codeTheme = ref('light');
+const createFileType = ref('md');
+const sidebarVisible = ref(true);
 
 const codeThemeClass = computed(() =>
   codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
+);
+const isEditable = computed(() =>
+  ['markdown', 'text', 'json'].includes(fileType.value)
 );
 
 const renderer = new marked.Renderer();
@@ -269,16 +286,25 @@ const createFolder = async () => {
   }
 };
 
-const createMarkdown = async () => {
-  const name = window.prompt('请输入 Markdown 文件名（例如：note.md）');
+const createFile = async () => {
+  const type = createFileType.value;
+  const name = window.prompt('请输入文件名');
   if (!name) return;
   const parent = selectedNode.value?.type === 'dir' ? selectedNode.value.path : currentDir.value;
+  const extension = type === 'md' ? 'md' : type;
+  const finalName = name.includes('.') ? name : `${name}.${extension}`;
+  let content = '';
+  if (type === 'md') {
+    content = '# 新建文档\n\n请在此编写内容。';
+  } else if (type === 'json') {
+    content = '{\n  \"name\": \"example\"\n}\n';
+  }
   try {
     await axios.post('/api/create', {
       parent,
-      name,
+      name: finalName,
       type: 'file',
-      content: '# 新建文档\n\n请在此编写内容。'
+      content
     });
     await fetchTree();
   } catch (err) {
@@ -316,7 +342,7 @@ const toggleEdit = () => {
   }
 };
 
-const saveMarkdown = async () => {
+const saveFile = async () => {
   if (!selectedFile.value) return;
   saving.value = true;
   try {
@@ -324,7 +350,14 @@ const saveMarkdown = async () => {
       headers: { 'Content-Type': 'text/plain' }
     });
     fileContent.value = editContent.value;
-    fileType.value = 'markdown';
+    const ext = selectedFile.value.name?.split('.').pop()?.toLowerCase();
+    if (ext === 'md' || ext === 'markdown') {
+      fileType.value = 'markdown';
+    } else if (ext === 'json') {
+      fileType.value = 'json';
+    } else if (ext === 'txt') {
+      fileType.value = 'text';
+    }
     isEditing.value = false;
   } catch (err) {
     error.value = '保存失败，请重试。';
@@ -356,6 +389,10 @@ onMounted(fetchTree);
 
 const toggleTheme = () => {
   codeTheme.value = codeTheme.value === 'light' ? 'dark' : 'light';
+};
+
+const toggleSidebar = () => {
+  sidebarVisible.value = !sidebarVisible.value;
 };
 </script>
 
@@ -389,6 +426,11 @@ const toggleTheme = () => {
   grid-template-columns: auto 1fr;
   gap: 24px;
   align-items: start;
+  position: relative;
+}
+
+.layout.sidebar-hidden {
+  grid-template-columns: 1fr;
 }
 
 .card {
@@ -399,15 +441,52 @@ const toggleTheme = () => {
   border: 1px solid rgba(148, 163, 184, 0.15);
 }
 
+.sidebar-wrapper {
+  position: relative;
+  display: flex;
+}
+
 .sidebar {
   position: sticky;
   top: 24px;
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 40px);
   overflow: auto;
-  resize: horizontal;
+  resize: both;
   min-width: 260px;
   max-width: 520px;
   width: 320px;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-toggle {
+  border: none;
+  background: #1e293b;
+  color: white;
+  width: 28px;
+  height: 48px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
+}
+
+.sidebar-toggle.collapse {
+  position: absolute;
+  top: 120px;
+  right: -14px;
+  z-index: 3;
+}
+
+.sidebar-toggle.expand {
+  position: fixed;
+  top: 160px;
+  left: 12px;
+  z-index: 5;
 }
 
 .section-title {
@@ -460,6 +539,22 @@ const toggleTheme = () => {
   margin-bottom: 16px;
 }
 
+.file-create {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.file-create select {
+  flex: 1;
+  border: 1px solid #cbd5f5;
+  border-radius: 10px;
+  padding: 6px 8px;
+  color: #4338ca;
+  background: #eef2ff;
+  font-weight: 600;
+}
+
 .manage-actions .secondary {
   border: 1px solid #cbd5f5;
   background: #eef2ff;
@@ -486,7 +581,9 @@ const toggleTheme = () => {
 }
 
 .tree-container {
-  max-height: 45vh;
+  flex: 1;
+  min-height: 140px;
+  max-height: calc(100vh - 420px);
   overflow: auto;
 }
 
@@ -514,6 +611,10 @@ const toggleTheme = () => {
   border-bottom: 1px solid rgba(148, 163, 184, 0.3);
   padding-bottom: 12px;
   margin-bottom: 16px;
+  position: sticky;
+  top: 64px;
+  background: white;
+  z-index: 1;
 }
 
 .theme-toggle {
