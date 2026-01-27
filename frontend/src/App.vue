@@ -74,27 +74,28 @@
               </div>
             </div>
           </div>
+          <div class="preview-body">
+            <div v-if="fileType === 'image'" class="image-preview">
+              <img :src="imageUrl" :alt="selectedFile.name" />
+            </div>
 
-          <div v-if="fileType === 'image'" class="image-preview">
-            <img :src="imageUrl" :alt="selectedFile.name" />
-          </div>
+            <div v-else-if="fileType === 'markdown'" class="markdown-area">
+              <textarea
+                v-if="isEditing"
+                v-model="editContent"
+                class="editor"
+              ></textarea>
+              <div v-else ref="previewRef" class="markdown" v-html="renderedMarkdown"></div>
+            </div>
 
-          <div v-else-if="fileType === 'markdown'" class="markdown-area">
-            <textarea
-              v-if="isEditing"
-              v-model="editContent"
-              class="editor"
-            ></textarea>
-            <div v-else ref="previewRef" class="markdown" v-html="renderedMarkdown"></div>
-          </div>
+            <div v-else-if="fileType === 'pdf'" class="pdf-preview">
+              <iframe :src="imageUrl" title="PDF预览"></iframe>
+            </div>
 
-          <div v-else-if="fileType === 'pdf'" class="pdf-preview">
-            <iframe :src="imageUrl" title="PDF预览"></iframe>
-          </div>
-
-          <div v-else class="text-preview">
-            <textarea v-if="isEditing" v-model="editContent" class="editor"></textarea>
-            <pre v-else>{{ fileContent }}</pre>
+            <div v-else class="text-preview">
+              <textarea v-if="isEditing" v-model="editContent" class="editor"></textarea>
+              <pre v-else>{{ fileContent }}</pre>
+            </div>
           </div>
         </div>
         <div v-else>
@@ -103,7 +104,9 @@
               <div class="section-title">文件预览</div>
             </div>
           </div>
-          <div class="empty">请选择左侧目录树中的文件进行预览。</div>
+          <div class="preview-body">
+            <div class="empty">请选择左侧目录树中的文件进行预览。</div>
+          </div>
         </div>
       </section>
     </main>
@@ -436,6 +439,10 @@ const updateSidebarMetrics = () => {
 const updateContentMetrics = () => {
   const element = contentRef.value;
   if (!element) return;
+  if (!sidebarVisible.value) {
+    element.style.maxWidth = '100%';
+    return;
+  }
   const availableWidth = window.innerWidth - sidebarWidth.value - 96;
   element.style.maxWidth = `${Math.max(360, availableWidth)}px`;
 };
@@ -489,6 +496,10 @@ const toggleSidebar = () => {
 
 .layout.sidebar-hidden {
   grid-template-columns: 1fr;
+}
+
+.layout.sidebar-hidden .content {
+  max-width: 100%;
 }
 
 .layout:not(.sidebar-hidden) {
@@ -655,10 +666,12 @@ const toggleSidebar = () => {
 .content {
   position: relative;
   resize: both;
-  overflow: auto;
+  overflow: hidden;
   min-width: 360px;
   max-width: calc(100vw - var(--sidebar-width, 320px) - 96px);
   max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-header {
@@ -670,9 +683,13 @@ const toggleSidebar = () => {
   margin-bottom: 20px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.3);
   gap: 16px;
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex-shrink: 0;
+}
+
+.preview-body {
+  flex: 1;
+  overflow: auto;
+  padding-right: 8px;
 }
 
 .preview-title {
@@ -862,6 +879,10 @@ const toggleSidebar = () => {
   .sidebar {
     position: static;
     max-height: none;
+  }
+
+  .content {
+    max-width: 100%;
   }
 }
 </style>
