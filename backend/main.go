@@ -317,6 +317,10 @@ func detectFileType(path string) string {
 		return "markdown"
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg":
 		return "image"
+	case ".pdf":
+		return "pdf"
+	case ".txt":
+		return "text"
 	default:
 		return "text"
 	}

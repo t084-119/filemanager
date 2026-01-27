@@ -1,18 +1,12 @@
 <template>
-  <div class="page">
-    <header class="hero">
-      <div>
-        <h1>本地文件管理中心</h1>
-        <p>浏览目录树、渲染 Markdown + Mermaid、上传文件并实时预览。</p>
-      </div>
-      <button class="refresh" @click="fetchTree" :disabled="loading">
-        {{ loading ? '刷新中...' : '刷新目录' }}
-      </button>
-    </header>
-
+  <div class="page" :class="codeThemeClass">
     <main class="layout">
       <section class="sidebar card">
-        <div class="section-title">目录结构</div>
+        <div class="sidebar-header">
+          <button class="refresh" @click="fetchTree" :disabled="loading">
+            {{ loading ? '刷新中...' : '刷新目录' }}
+          </button>
+        </div>
         <div class="path-info">
           <span>当前目录:</span>
           <strong>{{ currentDir || '/' }}</strong>
@@ -45,6 +39,15 @@
       </section>
 
       <section class="content card">
+        <div class="content-header">
+          <div class="section-title">文件预览</div>
+          <div class="theme-toggle" v-if="fileType === 'markdown'">
+            <span>代码主题</span>
+            <button @click="toggleTheme">
+              {{ codeTheme === 'light' ? '夜间' : '白天' }}
+            </button>
+          </div>
+        </div>
         <div class="section-title">文件预览</div>
         <div class="status" v-if="error">{{ error }}</div>
         <div v-if="selectedFile">
@@ -76,6 +79,10 @@
             <div v-else ref="previewRef" class="markdown" v-html="renderedMarkdown"></div>
           </div>
 
+          <div v-else-if="fileType === 'pdf'" class="pdf-preview">
+            <iframe :src="imageUrl" title="PDF预览"></iframe>
+          </div>
+
           <div v-else class="text-preview">
             <pre>{{ fileContent }}</pre>
           </div>
@@ -89,6 +96,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import axios from 'axios';
+import hljs from 'highlight.js';
 import mermaid from 'mermaid';
 import { marked } from 'marked';
 import TreeNode from './components/TreeNode.vue';
@@ -110,6 +118,11 @@ const editContent = ref('');
 const saving = ref(false);
 const previewRef = ref(null);
 const fileInput = ref(null);
+const codeTheme = ref('light');
+
+const codeThemeClass = computed(() =>
+  codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
+);
 
 const renderer = new marked.Renderer();
 const escapeHtml = (value) =>
@@ -121,10 +134,22 @@ const escapeHtml = (value) =>
     .replace(/'/g, '&#39;');
 
 renderer.code = (code, info) => {
-  if ((info || '').trim() === 'mermaid') {
+  const language = (info || '').trim().toLowerCase();
+  if (language === 'mermaid') {
     return `<div class="mermaid">${code}</div>`;
   }
-  return `<pre><code>${escapeHtml(code)}</code></pre>`;
+  const hasLanguage = language && hljs.getLanguage(language);
+  const highlighted = hasLanguage
+    ? hljs.highlight(code, { language }).value
+    : hljs.highlightAuto(code).value;
+  const langLabel = language || 'text';
+  return `
+    <div class="code-block">
+      <button class="copy-button" data-copy="${escapeHtml(code)}">复制</button>
+      <div class="language-label">${langLabel}</div>
+      <pre><code class="hljs language-${langLabel}">${highlighted}</code></pre>
+    </div>
+  `;
 };
 marked.setOptions({ renderer, breaks: true });
 
@@ -168,9 +193,9 @@ const selectNode = async (node) => {
     });
     fileContent.value = response.data.content;
     fileType.value = response.data.type;
-    if (fileType.value === 'image') {
-      imageUrl.value = `/api/raw?path=${encodeURIComponent(node.path)}`;
-    }
+  if (fileType.value === 'image' || fileType.value === 'pdf') {
+    imageUrl.value = `/api/raw?path=${encodeURIComponent(node.path)}`;
+  }
   } catch (err) {
     error.value = '无法加载文件内容。';
   }
@@ -291,43 +316,45 @@ watch(renderedMarkdown, async () => {
     if (nodes.length) {
       mermaid.run({ nodes });
     }
+    const buttons = previewRef.value.querySelectorAll('.copy-button');
+    buttons.forEach((button) => {
+      button.onclick = async (event) => {
+        const text = event.currentTarget?.dataset?.copy || '';
+        try {
+          await navigator.clipboard.writeText(text);
+          event.currentTarget.textContent = '已复制';
+          setTimeout(() => {
+            event.currentTarget.textContent = '复制';
+          }, 1500);
+        } catch (err) {
+          error.value = '复制失败，请手动复制。';
+        }
+      };
+    });
   }
 });
 
 onMounted(fetchTree);
+
+const toggleTheme = () => {
+  codeTheme.value = codeTheme.value === 'light' ? 'dark' : 'light';
+};
 </script>
 
 <style scoped>
 .page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  background: radial-gradient(circle at top, #eef2ff 0%, #f8fafc 45%, #f1f5f9 100%);
   padding: 32px;
   font-family: 'Inter', 'Noto Sans SC', sans-serif;
   color: #0f172a;
-}
-
-.hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.hero h1 {
-  font-size: 2rem;
-  margin: 0 0 4px 0;
-}
-
-.hero p {
-  margin: 0;
-  color: #475569;
 }
 
 .refresh {
   background: #4f46e5;
   border: none;
   color: white;
-  padding: 10px 16px;
+  padding: 8px 14px;
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
@@ -343,20 +370,35 @@ onMounted(fetchTree);
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 24px;
+  align-items: start;
 }
 
 .card {
   background: white;
   border-radius: 18px;
   padding: 20px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.sidebar {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 80px);
+  overflow: auto;
 }
 
 .section-title {
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   font-size: 1.1rem;
   color: #1e293b;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 .path-info {
@@ -422,17 +464,50 @@ onMounted(fetchTree);
 }
 
 .tree-container {
-  max-height: 60vh;
+  max-height: 45vh;
   overflow: auto;
+}
+
+.content {
+  position: relative;
+}
+
+.content-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
 }
 
 .content .file-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
   padding-bottom: 12px;
   margin-bottom: 16px;
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #475569;
+}
+
+.theme-toggle button {
+  border: none;
+  background: #0f172a;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
 }
 
 .subtitle {
@@ -462,6 +537,15 @@ onMounted(fetchTree);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
 }
 
+.pdf-preview iframe {
+  width: 100%;
+  height: 70vh;
+  border: none;
+  border-radius: 12px;
+  background: #f8fafc;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+}
+
 .markdown-area {
   line-height: 1.7;
 }
@@ -473,11 +557,19 @@ onMounted(fetchTree);
 }
 
 .markdown pre {
-  background: #0f172a;
-  color: #f8fafc;
+  background: transparent;
   padding: 12px;
   border-radius: 10px;
   overflow: auto;
+}
+
+.language-label {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  font-size: 0.7rem;
+  color: #e2e8f0;
+  text-transform: uppercase;
 }
 
 .editor {
@@ -510,6 +602,11 @@ onMounted(fetchTree);
 @media (max-width: 1024px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    max-height: none;
   }
 }
 </style>
