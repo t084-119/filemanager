@@ -577,7 +577,7 @@ const stopPreviewResize = () => {
   position: fixed;
   top: 24px;
   left: 32px;
-  height: calc(100vh - 40px);
+  max-height: calc(100vh - 40px);
   overflow: auto;
   resize: both;
   min-width: 260px;
@@ -711,8 +711,8 @@ const stopPreviewResize = () => {
 
 .tree-container {
   flex: 1;
-  min-height: 0;
-  max-height: none;
+  min-height: 140px;
+  max-height: calc(100vh - 420px);
   overflow: auto;
 }
 
@@ -768,7 +768,7 @@ const stopPreviewResize = () => {
 }
 
 .preview-body {
-  flex: 1 1 auto;
+  flex: 1;
   overflow-y: auto;
   padding-right: 8px;
   min-height: 0;
