@@ -564,6 +564,29 @@ const toggleTheme = () => {
   margin-top: 1.2em;
 }
 
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin-top: 1em;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0.6em 0 0.6em 1.4em;
+  padding-left: 1.2em;
+}
+
+.markdown li {
+  margin: 0.35em 0;
+}
+
+.markdown ul ul,
+.markdown ol ol,
+.markdown ul ol,
+.markdown ol ul {
+  margin-top: 0.3em;
+}
+
 .markdown pre {
   background: transparent;
   padding: 12px;
