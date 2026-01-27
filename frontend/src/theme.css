@@ -1,0 +1,100 @@
+.markdown pre code.hljs {
+  display: block;
+  padding: 18px 16px;
+  border-radius: 14px;
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  position: relative;
+}
+
+.markdown pre code.hljs::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.code-theme-light .markdown pre code.hljs {
+  background: #f8fafc;
+  color: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.code-theme-dark .markdown pre code.hljs {
+  background: #0b1120;
+  color: #e2e8f0;
+}
+
+.code-theme-light .hljs-keyword,
+.code-theme-light .hljs-selector-tag,
+.code-theme-light .hljs-title,
+.code-theme-light .hljs-section {
+  color: #7c3aed;
+}
+
+.code-theme-light .hljs-string,
+.code-theme-light .hljs-attribute {
+  color: #ea580c;
+}
+
+.code-theme-light .hljs-number,
+.code-theme-light .hljs-literal,
+.code-theme-light .hljs-built_in,
+.code-theme-light .hljs-type {
+  color: #2563eb;
+}
+
+.code-theme-light .hljs-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.code-theme-light .hljs-meta,
+.code-theme-light .hljs-operator,
+.code-theme-light .hljs-symbol,
+.code-theme-light .hljs-variable {
+  color: #0ea5e9;
+}
+
+.code-theme-dark .hljs-keyword,
+.code-theme-dark .hljs-selector-tag,
+.code-theme-dark .hljs-title,
+.code-theme-dark .hljs-section {
+  color: #a78bfa;
+}
+
+.code-theme-dark .hljs-string,
+.code-theme-dark .hljs-attribute {
+  color: #f97316;
+}
+
+.code-theme-dark .hljs-number,
+.code-theme-dark .hljs-literal,
+.code-theme-dark .hljs-built_in,
+.code-theme-dark .hljs-type {
+  color: #38bdf8;
+}
+
+.code-theme-dark .hljs-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.code-theme-dark .hljs-meta,
+.code-theme-dark .hljs-operator,
+.code-theme-dark .hljs-symbol,
+.code-theme-dark .hljs-variable {
+  color: #22d3ee;
+}
+
+.markdown pre code.hljs[data-lang="bat"],
+.markdown pre code.hljs[data-lang="jso"],
+.markdown pre code.hljs[data-lang="json"],
+.markdown pre code.hljs[data-lang="text"] {
+  border-left: 4px solid rgba(99, 102, 241, 0.6);
+}
