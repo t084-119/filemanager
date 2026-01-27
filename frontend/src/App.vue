@@ -48,6 +48,7 @@
             </button>
           </div>
         </div>
+        <div class="section-title">文件预览</div>
         <div class="status" v-if="error">{{ error }}</div>
         <div v-if="selectedFile">
           <div class="file-header">
