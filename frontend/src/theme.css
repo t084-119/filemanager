@@ -1,39 +1,79 @@
-.code-theme-light .markdown pre code.hljs {
-  background: #f8fafc;
-  color: #0f172a;
-}
-
-.code-theme-light .language-label {
-  color: #475569;
-}
-
-.code-theme-dark .markdown pre code.hljs {
-  background: #0f172a;
-  color: #e2e8f0;
-}
-
-.code-theme-dark .language-label {
-  color: #e2e8f0;
-}
-
-.code-block {
+.markdown pre code.hljs {
+  display: block;
+  padding: 18px 16px;
+  border-radius: 14px;
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
   position: relative;
 }
 
-.copy-button {
+.markdown pre code.hljs::before {
+  content: attr(data-lang);
   position: absolute;
   top: 10px;
-  right: 10px;
-  border: none;
-  background: rgba(79, 70, 229, 0.85);
-  color: white;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  cursor: pointer;
-  z-index: 1;
+  right: 12px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: inherit;
+  opacity: 0.6;
 }
 
-.copy-button:active {
-  transform: scale(0.98);
+.code-theme-light .markdown pre code.hljs {
+  background: #f8fafc;
+  color: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.code-theme-dark .markdown pre code.hljs {
+  background: #0b1120;
+  color: #e2e8f0;
+}
+
+.code-theme-light .hljs-keyword,
+.code-theme-light .hljs-selector-tag,
+.code-theme-light .hljs-title,
+.code-theme-light .hljs-section {
+  color: #7c3aed;
+}
+
+.code-theme-light .hljs-string,
+.code-theme-light .hljs-attribute {
+  color: #ea580c;
+}
+
+.code-theme-light .hljs-number,
+.code-theme-light .hljs-literal,
+.code-theme-light .hljs-built_in,
+.code-theme-light .hljs-type {
+  color: #2563eb;
+}
+
+.code-theme-light .hljs-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.code-theme-dark .hljs-keyword,
+.code-theme-dark .hljs-selector-tag,
+.code-theme-dark .hljs-title,
+.code-theme-dark .hljs-section {
+  color: #a78bfa;
+}
+
+.code-theme-dark .hljs-string,
+.code-theme-dark .hljs-attribute {
+  color: #f97316;
+}
+
+.code-theme-dark .hljs-number,
+.code-theme-dark .hljs-literal,
+.code-theme-dark .hljs-built_in,
+.code-theme-dark .hljs-type {
+  color: #38bdf8;
+}
+
+.code-theme-dark .hljs-comment {
+  color: #94a3b8;
+  font-style: italic;
 }

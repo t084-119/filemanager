@@ -48,7 +48,6 @@
             </button>
           </div>
         </div>
-        <div class="section-title">文件预览</div>
         <div class="status" v-if="error">{{ error }}</div>
         <div v-if="selectedFile">
           <div class="file-header">
@@ -143,13 +142,35 @@ renderer.code = (code, info) => {
     ? hljs.highlight(code, { language }).value
     : hljs.highlightAuto(code).value;
   const langLabel = language || 'text';
-  return `
-    <div class="code-block">
-      <button class="copy-button" data-copy="${escapeHtml(code)}">复制</button>
-      <div class="language-label">${langLabel}</div>
-      <pre><code class="hljs language-${langLabel}">${highlighted}</code></pre>
-    </div>
-  `;
+  return `<pre><code class="hljs language-${langLabel}" data-lang="${langLabel}">${highlighted}</code></pre>`;
+};
+
+const currentFileDir = ref('');
+const resolveAssetPath = (href) => {
+  if (!href) return '';
+  if (/^(https?:)?\/\//i.test(href)) {
+    return href;
+  }
+  const baseParts = currentFileDir.value ? currentFileDir.value.split('/') : [];
+  const relParts = href.split('/');
+  const stack = [...baseParts];
+  for (const part of relParts) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  const resolved = stack.join('/');
+  return `/api/raw?path=${encodeURIComponent(resolved)}`;
+};
+
+renderer.image = (href, title, text) => {
+  const safeTitle = title ? ` title="${escapeHtml(title)}"` : '';
+  const safeAlt = text ? escapeHtml(text) : '';
+  const resolved = resolveAssetPath(href);
+  return `<img src="${resolved}" alt="${safeAlt}"${safeTitle} />`;
 };
 marked.setOptions({ renderer, breaks: true });
 
@@ -178,6 +199,7 @@ const selectNode = async (node) => {
   selectedPath.value = node.path;
   if (node.type === 'dir') {
     currentDir.value = node.path || '';
+    currentFileDir.value = node.path || '';
     selectedFile.value = null;
     fileType.value = '';
     return;
@@ -185,6 +207,7 @@ const selectNode = async (node) => {
 
   selectedFile.value = node;
   currentDir.value = node.path.split('/').slice(0, -1).join('/');
+  currentFileDir.value = currentDir.value;
   error.value = '';
   isEditing.value = false;
   try {
@@ -193,9 +216,9 @@ const selectNode = async (node) => {
     });
     fileContent.value = response.data.content;
     fileType.value = response.data.type;
-  if (fileType.value === 'image' || fileType.value === 'pdf') {
-    imageUrl.value = `/api/raw?path=${encodeURIComponent(node.path)}`;
-  }
+    if (fileType.value === 'image' || fileType.value === 'pdf') {
+      imageUrl.value = `/api/raw?path=${encodeURIComponent(node.path)}`;
+    }
   } catch (err) {
     error.value = '无法加载文件内容。';
   }
@@ -316,21 +339,6 @@ watch(renderedMarkdown, async () => {
     if (nodes.length) {
       mermaid.run({ nodes });
     }
-    const buttons = previewRef.value.querySelectorAll('.copy-button');
-    buttons.forEach((button) => {
-      button.onclick = async (event) => {
-        const text = event.currentTarget?.dataset?.copy || '';
-        try {
-          await navigator.clipboard.writeText(text);
-          event.currentTarget.textContent = '已复制';
-          setTimeout(() => {
-            event.currentTarget.textContent = '复制';
-          }, 1500);
-        } catch (err) {
-          error.value = '复制失败，请手动复制。';
-        }
-      };
-    });
   }
 });
 
@@ -561,15 +569,6 @@ const toggleTheme = () => {
   padding: 12px;
   border-radius: 10px;
   overflow: auto;
-}
-
-.language-label {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  font-size: 0.7rem;
-  color: #e2e8f0;
-  text-transform: uppercase;
 }
 
 .editor {
