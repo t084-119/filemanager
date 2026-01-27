@@ -577,6 +577,7 @@ const onSidebarResize = () => {
 
 .file-create {
   display: flex;
+  flex-direction: column;
   gap: 6px;
   align-items: center;
 }
@@ -763,6 +764,24 @@ const onSidebarResize = () => {
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 0.92em;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 16px;
+  font-size: 0.95rem;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.markdown thead {
+  background: rgba(248, 250, 252, 0.9);
 }
 
 .markdown pre {
