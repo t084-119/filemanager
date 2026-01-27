@@ -512,10 +512,12 @@ const stopPreviewResize = () => {
 <style scoped>
 .page {
   min-height: 100vh;
+  height: 100vh;
   background: radial-gradient(circle at top, #eef2ff 0%, #f8fafc 45%, #f1f5f9 100%);
   padding: 32px;
   font-family: 'Inter', 'Noto Sans SC', sans-serif;
   color: #0f172a;
+  overflow: hidden;
 }
 
 .refresh {
@@ -541,6 +543,7 @@ const stopPreviewResize = () => {
   align-items: start;
   position: relative;
   padding-left: 0;
+  height: 100%;
 }
 
 .layout.sidebar-hidden {
@@ -726,6 +729,10 @@ const stopPreviewResize = () => {
   justify-self: end;
 }
 
+.content.card {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
 .content-resizer {
   position: absolute;
   top: 16px;
@@ -761,7 +768,7 @@ const stopPreviewResize = () => {
 
 .preview-body {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
   padding-right: 8px;
   min-height: 0;
 }
