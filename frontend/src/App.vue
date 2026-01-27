@@ -324,6 +324,7 @@ const saveMarkdown = async () => {
       headers: { 'Content-Type': 'text/plain' }
     });
     fileContent.value = editContent.value;
+    fileType.value = 'markdown';
     isEditing.value = false;
   } catch (err) {
     error.value = '保存失败，请重试。';
@@ -339,6 +340,15 @@ watch(renderedMarkdown, async () => {
     if (nodes.length) {
       mermaid.run({ nodes });
     }
+    const images = previewRef.value.querySelectorAll('img');
+    images.forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      if (!src || src.startsWith('data:')) return;
+      if (/^(https?:)?\/\//i.test(src)) return;
+      if (src.startsWith('/api/raw')) return;
+      const resolved = resolveAssetPath(src);
+      img.setAttribute('src', resolved);
+    });
   }
 });
 
@@ -376,7 +386,7 @@ const toggleTheme = () => {
 
 .layout {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: auto 1fr;
   gap: 24px;
   align-items: start;
 }
@@ -394,6 +404,10 @@ const toggleTheme = () => {
   top: 24px;
   max-height: calc(100vh - 80px);
   overflow: auto;
+  resize: horizontal;
+  min-width: 260px;
+  max-width: 520px;
+  width: 320px;
 }
 
 .section-title {
@@ -572,8 +586,8 @@ const toggleTheme = () => {
 
 .markdown ul,
 .markdown ol {
-  margin: 0.6em 0 0.6em 1.4em;
-  padding-left: 1.2em;
+  margin: 0.6em 0 0.6em 1.6em;
+  padding-left: 1.4em;
 }
 
 .markdown li {
@@ -585,6 +599,30 @@ const toggleTheme = () => {
 .markdown ul ol,
 .markdown ol ul {
   margin-top: 0.3em;
+}
+
+.markdown h1 + ul,
+.markdown h2 + ul,
+.markdown h3 + ul,
+.markdown h4 + ul,
+.markdown h5 + ul,
+.markdown h6 + ul,
+.markdown h1 + ol,
+.markdown h2 + ol,
+.markdown h3 + ol,
+.markdown h4 + ol,
+.markdown h5 + ol,
+.markdown h6 + ol {
+  margin-top: 0.4em;
+  margin-left: 1.8em;
+}
+
+.markdown code:not(pre code) {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.92em;
 }
 
 .markdown pre {

@@ -10,7 +10,13 @@
       </span>
       <span class="caret" v-else>•</span>
       <span class="icon">{{ node.type === 'dir' ? '📁' : fileIcon }}</span>
-      <span class="label">{{ node.name }}</span>
+      <span
+        class="label"
+        :class="{ truncate: node.type === 'file' }"
+        :title="node.name"
+      >
+        {{ displayName }}
+      </span>
     </div>
     <div v-if="node.type === 'dir' && expanded" class="children">
       <TreeNode
@@ -47,6 +53,22 @@ const fileIcon = computed(() => {
   if (lower.endsWith('.md')) return '📝';
   if (/(\.png|\.jpg|\.jpeg|\.gif|\.webp|\.svg)$/i.test(lower)) return '🖼️';
   return '📄';
+});
+
+const displayName = computed(() => {
+  if (!props.node.name) return '';
+  if (props.node.type === 'dir') return props.node.name;
+  const name = props.node.name;
+  if (name.length <= 26) return name;
+  const parts = name.split('.');
+  if (parts.length < 2) {
+    return `${name.slice(0, 12)}…${name.slice(-8)}`;
+  }
+  const ext = parts.pop();
+  const base = parts.join('.');
+  const head = base.slice(0, 10);
+  const tail = base.slice(-6);
+  return `${head}…${tail}.${ext}`;
 });
 
 const handleClick = () => {
@@ -95,8 +117,16 @@ const handleClick = () => {
 }
 
 .label {
+  flex: 1;
+  min-width: 0;
   font-size: 0.92rem;
   word-break: break-all;
+}
+
+.label.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .children {
