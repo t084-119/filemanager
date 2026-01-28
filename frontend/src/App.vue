@@ -2,7 +2,7 @@
   <div class="page" :class="codeThemeClass">
     <main class="layout" :class="{ 'sidebar-hidden': !sidebarVisible }">
       <div v-if="sidebarVisible" class="sidebar-wrapper" :style="wrapperStyle">
-        <section ref="sidebarRef" class="sidebar card">
+        <section class="sidebar card" @mouseup="onSidebarResize" @mouseleave="onSidebarResize">
           <div class="sidebar-header">
             <button class="refresh" @click="fetchTree" :disabled="loading">
               {{ loading ? '刷新中...' : '刷新目录' }}
@@ -49,13 +49,7 @@
       </div>
       <button v-else class="sidebar-toggle expand" @click="toggleSidebar">&gt;</button>
 
-      <section ref="contentRef" class="content card" :style="contentStyle">
-        <div
-          v-if="fileType === 'markdown'"
-          class="content-resizer"
-          @mousedown="startPreviewResize"
-          title="拖动调整预览宽度"
-        ></div>
+      <section class="content card">
         <div class="status" v-if="error">{{ error }}</div>
         <div v-if="selectedFile">
           <div class="preview-header">
@@ -80,28 +74,27 @@
               </div>
             </div>
           </div>
-          <div class="preview-body">
-            <div v-if="fileType === 'image'" class="image-preview">
-              <img :src="imageUrl" :alt="selectedFile.name" />
-            </div>
 
-            <div v-else-if="fileType === 'markdown'" class="markdown-area">
-              <textarea
-                v-if="isEditing"
-                v-model="editContent"
-                class="editor"
-              ></textarea>
-              <div v-else ref="previewRef" class="markdown" v-html="renderedMarkdown"></div>
-            </div>
+          <div v-if="fileType === 'image'" class="image-preview">
+            <img :src="imageUrl" :alt="selectedFile.name" />
+          </div>
 
-            <div v-else-if="fileType === 'pdf'" class="pdf-preview">
-              <iframe :src="imageUrl" title="PDF预览"></iframe>
-            </div>
+          <div v-else-if="fileType === 'markdown'" class="markdown-area">
+            <textarea
+              v-if="isEditing"
+              v-model="editContent"
+              class="editor"
+            ></textarea>
+            <div v-else ref="previewRef" class="markdown" v-html="renderedMarkdown"></div>
+          </div>
 
-            <div v-else class="text-preview">
-              <textarea v-if="isEditing" v-model="editContent" class="editor"></textarea>
-              <pre v-else>{{ fileContent }}</pre>
-            </div>
+          <div v-else-if="fileType === 'pdf'" class="pdf-preview">
+            <iframe :src="imageUrl" title="PDF预览"></iframe>
+          </div>
+
+          <div v-else class="text-preview">
+            <textarea v-if="isEditing" v-model="editContent" class="editor"></textarea>
+            <pre v-else>{{ fileContent }}</pre>
           </div>
         </div>
         <div v-else>
@@ -110,9 +103,7 @@
               <div class="section-title">文件预览</div>
             </div>
           </div>
-          <div class="preview-body">
-            <div class="empty">请选择左侧目录树中的文件进行预览。</div>
-          </div>
+          <div class="empty">请选择左侧目录树中的文件进行预览。</div>
         </div>
       </section>
     </main>
@@ -120,7 +111,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import axios from 'axios';
 import hljs from 'highlight.js';
 import mermaid from 'mermaid';
@@ -149,12 +140,6 @@ const createFileType = ref('md');
 const sidebarVisible = ref(true);
 const sidebarWidth = ref(320);
 const sidebarHeight = ref(360);
-const sidebarRef = ref(null);
-const contentRef = ref(null);
-const resizeObserver = ref(null);
-const contentWidth = ref(null);
-const isResizingPreview = ref(false);
-const resizeState = ref({ startX: 0, startWidth: 0 });
 
 const codeThemeClass = computed(() =>
   codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
@@ -165,15 +150,6 @@ const wrapperStyle = computed(() => ({
 const isEditable = computed(() =>
   ['markdown', 'text', 'json'].includes(fileType.value)
 );
-const contentStyle = computed(() => {
-  if (!sidebarVisible.value) {
-    return { maxWidth: '100%', width: '100%', justifySelf: 'stretch' };
-  }
-  if (contentWidth.value) {
-    return { width: `${contentWidth.value}px`, maxWidth: 'none' };
-  }
-  return {};
-});
 
 const renderer = new marked.Renderer();
 const escapeHtml = (value) =>
@@ -422,26 +398,7 @@ watch(renderedMarkdown, async () => {
 
 onMounted(() => {
   fetchTree();
-  nextTick(() => {
-    updateSidebarMetrics();
-    updateContentMetrics();
-    if (sidebarRef.value && contentRef.value) {
-      resizeObserver.value = new ResizeObserver(() => {
-        updateSidebarMetrics();
-        updateContentMetrics();
-      });
-      resizeObserver.value.observe(sidebarRef.value);
-      resizeObserver.value.observe(contentRef.value);
-    }
-  });
-});
-
-onBeforeUnmount(() => {
-  if (resizeObserver.value) {
-    resizeObserver.value.disconnect();
-  }
-  window.removeEventListener('mousemove', handlePreviewResize);
-  window.removeEventListener('mouseup', stopPreviewResize);
+  nextTick(() => updateSidebarMetrics());
 });
 
 const toggleTheme = () => {
@@ -449,75 +406,32 @@ const toggleTheme = () => {
 };
 
 const updateSidebarMetrics = () => {
-  const element = sidebarRef.value;
+  const element = document.querySelector('.sidebar');
   if (!element) return;
   const rect = element.getBoundingClientRect();
   sidebarWidth.value = rect.width;
   sidebarHeight.value = rect.height;
 };
 
-const updateContentMetrics = () => {
-  const element = contentRef.value;
-  if (!element) return;
-  if (!sidebarVisible.value) {
-    element.style.maxWidth = '100%';
-    contentWidth.value = null;
-    return;
-  }
-  const availableWidth = window.innerWidth - sidebarWidth.value - 96;
-  const maxWidth = Math.max(360, availableWidth);
-  element.style.maxWidth = `${maxWidth}px`;
-  if (contentWidth.value && contentWidth.value > maxWidth) {
-    contentWidth.value = maxWidth;
-  }
-};
-
 const toggleSidebar = () => {
   sidebarVisible.value = !sidebarVisible.value;
   if (sidebarVisible.value) {
-    nextTick(() => {
-      updateSidebarMetrics();
-      updateContentMetrics();
-    });
-  } else {
-    nextTick(() => updateContentMetrics());
+    nextTick(() => updateSidebarMetrics());
   }
 };
 
-const startPreviewResize = (event) => {
-  if (!contentRef.value) return;
-  isResizingPreview.value = true;
-  const rect = contentRef.value.getBoundingClientRect();
-  resizeState.value = { startX: event.clientX, startWidth: rect.width };
-  window.addEventListener('mousemove', handlePreviewResize);
-  window.addEventListener('mouseup', stopPreviewResize);
-};
-
-const handlePreviewResize = (event) => {
-  if (!isResizingPreview.value) return;
-  const delta = resizeState.value.startX - event.clientX;
-  const availableWidth = window.innerWidth - (sidebarVisible.value ? sidebarWidth.value : 0) - 96;
-  const maxWidth = Math.max(360, availableWidth);
-  const nextWidth = Math.min(Math.max(360, resizeState.value.startWidth + delta), maxWidth);
-  contentWidth.value = nextWidth;
-};
-
-const stopPreviewResize = () => {
-  isResizingPreview.value = false;
-  window.removeEventListener('mousemove', handlePreviewResize);
-  window.removeEventListener('mouseup', stopPreviewResize);
+const onSidebarResize = () => {
+  updateSidebarMetrics();
 };
 </script>
 
 <style scoped>
 .page {
   min-height: 100vh;
-  height: 100vh;
   background: radial-gradient(circle at top, #eef2ff 0%, #f8fafc 45%, #f1f5f9 100%);
   padding: 32px;
   font-family: 'Inter', 'Noto Sans SC', sans-serif;
   color: #0f172a;
-  overflow: hidden;
 }
 
 .refresh {
@@ -540,19 +454,13 @@ const stopPreviewResize = () => {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 24px;
-  align-items: stretch;
+  align-items: start;
   position: relative;
   padding-left: 0;
-  height: calc(100vh - 64px);
 }
 
 .layout.sidebar-hidden {
   grid-template-columns: 1fr;
-}
-
-.layout.sidebar-hidden .content {
-  max-width: 100%;
-  justify-self: stretch;
 }
 
 .layout:not(.sidebar-hidden) {
@@ -577,7 +485,7 @@ const stopPreviewResize = () => {
   position: fixed;
   top: 24px;
   left: 32px;
-  height: calc(100vh - 40px);
+  max-height: calc(100vh - 40px);
   overflow: auto;
   resize: both;
   min-width: 260px;
@@ -669,6 +577,7 @@ const stopPreviewResize = () => {
 
 .file-create {
   display: flex;
+  flex-direction: column;
   gap: 6px;
   align-items: center;
 }
@@ -710,48 +619,13 @@ const stopPreviewResize = () => {
 
 .tree-container {
   flex: 1;
-  min-height: 0;
-  max-height: none;
+  min-height: 140px;
+  max-height: calc(100vh - 420px);
   overflow: auto;
 }
 
 .content {
   position: relative;
-  resize: none;
-  overflow: hidden;
-  min-width: 360px;
-  max-width: calc(100vw - var(--sidebar-width, 320px) - 96px);
-  max-height: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-self: end;
-  min-height: 0;
-}
-
-.content.card {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-}
-
-.content-resizer {
-  position: absolute;
-  top: 16px;
-  left: -8px;
-  width: 16px;
-  height: calc(100% - 32px);
-  cursor: ew-resize;
-  z-index: 2;
-}
-
-.content-resizer::before {
-  content: '';
-  position: absolute;
-  left: 7px;
-  top: 0;
-  width: 2px;
-  height: 100%;
-  background: rgba(148, 163, 184, 0.65);
-  border-radius: 999px;
 }
 
 .preview-header {
@@ -763,14 +637,6 @@ const stopPreviewResize = () => {
   margin-bottom: 20px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.3);
   gap: 16px;
-  flex-shrink: 0;
-}
-
-.preview-body {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding-right: 8px;
-  min-height: 0;
 }
 
 .preview-title {
@@ -900,6 +766,24 @@ const stopPreviewResize = () => {
   font-size: 0.92em;
 }
 
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 16px;
+  font-size: 0.95rem;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.markdown thead {
+  background: rgba(248, 250, 252, 0.9);
+}
+
 .markdown pre {
   background: transparent;
   padding: 12px;
@@ -943,9 +827,6 @@ const stopPreviewResize = () => {
     position: static;
     max-height: none;
   }
-
-  .content {
-    max-width: 100%;
-  }
 }
 </style>
+
