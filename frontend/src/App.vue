@@ -54,8 +54,10 @@
         <div v-if="selectedFile">
           <div class="preview-header">
             <div class="preview-title">
-              <div class="section-title">文件预览</div>
-              <h2 class="file-name" v-if="selectedFile">{{ selectedFile.name }}</h2>
+              <div class="section-title">{{ selectedFile ? selectedFile.name : '文件预览' }}</div>
+              <h2 class="file-name" v-if="selectedFile" @click="toggleFileNameDisplay">
+                {{ displayPath }}
+              </h2>
             </div>
             <div class="preview-actions">
               <div class="theme-toggle" v-if="fileType === 'markdown'">
@@ -84,6 +86,7 @@
               v-if="isEditing"
               v-model="editContent"
               class="editor"
+              @keydown="handleTabKey"
             ></textarea>
             <div v-else ref="previewRef" class="markdown" v-html="renderedMarkdown"></div>
           </div>
@@ -93,7 +96,7 @@
           </div>
 
           <div v-else class="text-preview">
-            <textarea v-if="isEditing" v-model="editContent" class="editor"></textarea>
+            <textarea v-if="isEditing" v-model="editContent" class="editor" @keydown="handleTabKey"></textarea>
             <pre v-else>{{ fileContent }}</pre>
           </div>
         </div>
@@ -140,6 +143,7 @@ const createFileType = ref('md');
 const sidebarVisible = ref(true);
 const sidebarWidth = ref(320);
 const sidebarHeight = ref(360);
+const showFileName = ref(false);
 
 const codeThemeClass = computed(() =>
   codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
@@ -150,6 +154,17 @@ const wrapperStyle = computed(() => ({
 const isEditable = computed(() =>
   ['markdown', 'text', 'json'].includes(fileType.value)
 );
+
+const displayPath = computed(() => {
+  if (!selectedFile.value) return '';
+  const path = selectedFile.value.path;
+  if (!showFileName.value && path.length > 25) {
+    const start = path.substring(0, 12);
+    const end = path.substring(path.length - 12);
+    return `${start}...${end}`;
+  }
+  return path;
+});
 
 const renderer = new marked.Renderer();
 const escapeHtml = (value) =>
@@ -236,6 +251,7 @@ const selectNode = async (node) => {
   selectedFile.value = node;
   currentDir.value = node.path.split('/').slice(0, -1).join('/');
   currentFileDir.value = currentDir.value;
+  showFileName.value = true;
   error.value = '';
   isEditing.value = false;
   try {
@@ -423,6 +439,24 @@ const toggleSidebar = () => {
 const onSidebarResize = () => {
   updateSidebarMetrics();
 };
+
+const toggleFileNameDisplay = () => {
+  showFileName.value = !showFileName.value;
+};
+
+const handleTabKey = (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const textarea = e.target;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const value = textarea.value;
+    
+    textarea.value = value.substring(0, start) + '  ' + value.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + 2;
+    editContent.value = textarea.value;
+  }
+};
 </script>
 
 <style scoped>
@@ -494,6 +528,7 @@ const onSidebarResize = () => {
   min-height: 360px;
   display: flex;
   flex-direction: column;
+  z-index: 100;
 }
 
 .sidebar-toggle {
@@ -528,8 +563,8 @@ const onSidebarResize = () => {
 .section-title {
   font-weight: 700;
   margin-bottom: 0;
-  font-size: 1.1rem;
-  color: #1e293b;
+  font-size: 1.6rem;
+  color: #0f172a;
 }
 
 .sidebar-header {
@@ -626,6 +661,7 @@ const onSidebarResize = () => {
 
 .content {
   position: relative;
+  z-index: 1;
 }
 
 .preview-header {
@@ -647,8 +683,14 @@ const onSidebarResize = () => {
 
 .file-name {
   margin: 0;
-  font-size: 1.6rem;
-  color: #0f172a;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-name:hover {
+  color: #4f46e5;
 }
 
 .preview-actions {
@@ -700,6 +742,30 @@ const onSidebarResize = () => {
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
 }
 
+.image-preview {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.image-preview::-webkit-scrollbar {
+  width: 8px;
+}
+
+.image-preview::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.image-preview::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.image-preview::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 .pdf-preview iframe {
   width: 100%;
   height: 70vh;
@@ -709,8 +775,54 @@ const onSidebarResize = () => {
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
 }
 
+.pdf-preview {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.pdf-preview::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pdf-preview::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.pdf-preview::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.pdf-preview::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 .markdown-area {
   line-height: 1.7;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+}
+
+.markdown-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.markdown-area::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.markdown-area::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.markdown-area::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .markdown h1,
@@ -796,14 +908,50 @@ const onSidebarResize = () => {
   min-height: 320px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 12px;
-  font-family: 'Fira Code', monospace;
+  padding: 16px;
+  font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #334155;
+  background: #f8fafc;
+  resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
 
 .text-preview pre {
   background: #f1f5f9;
   padding: 12px;
   border-radius: 10px;
+}
+
+.text-preview {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.text-preview::-webkit-scrollbar {
+  width: 8px;
+}
+
+.text-preview::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.text-preview::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.text-preview::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .status {
