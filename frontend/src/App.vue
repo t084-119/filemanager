@@ -44,6 +44,9 @@
             />
           </div>
           <div class="empty" v-else>暂无目录数据</div>
+          <div class="permission-link">
+            <a href="#" @click.prevent="showLoginModal = true" v-if="!isLoggedIn">获取权限</a>
+          </div>
         </section>
         <button class="sidebar-toggle collapse" @click="toggleSidebar">&lt;</button>
       </div>
@@ -51,7 +54,13 @@
 
       <section class="content card">
         <div class="status" v-if="error">{{ error }}</div>
-        <div v-if="selectedFile">
+        <div v-if="permissionDenied">
+          <div class="permission-denied">
+            <div class="permission-icon">🔒</div>
+            <div class="permission-text">暂无权限访问</div>
+          </div>
+        </div>
+        <div v-else-if="selectedFile">
           <div class="preview-header">
             <div class="preview-title">
               <div class="section-title">{{ selectedFile ? selectedFile.name : '文件预览' }}</div>
@@ -60,7 +69,7 @@
               </h2>
             </div>
             <div class="preview-actions">
-              <div class="theme-toggle" v-if="fileType === 'markdown'">
+              <div class="theme-toggle" v-if="fileType === 'markdown' || fileType === 'json'">
                 <span>代码主题</span>
                 <button @click="toggleTheme">
                   {{ codeTheme === 'light' ? '夜间' : '白天' }}
@@ -95,6 +104,14 @@
             <iframe :src="imageUrl" title="PDF预览"></iframe>
           </div>
 
+          <!-- <div v-else-if="fileType === 'json'" class="json-preview">
+            <textarea v-if="isEditing" v-model="editContent" class="json-editor" @keydown="handleTabKey"></textarea>
+            <pre v-else class="json-code">{{ fileContent }}</pre>
+          </div> -->
+          <div v-else-if="fileType === 'json'" class="json-preview">
+           <textarea v-if="isEditing" v-model="editContent" class="editor" @keydown="handleTabKey"></textarea>
+            <pre v-else class="json-code hljs" v-html="highlightedJson"></pre>
+        </div>
           <div v-else class="text-preview">
             <textarea v-if="isEditing" v-model="editContent" class="editor" @keydown="handleTabKey"></textarea>
             <pre v-else>{{ fileContent }}</pre>
@@ -110,16 +127,61 @@
         </div>
       </section>
     </main>
+
+    <div v-if="showLoginModal" class="modal-overlay" @click="showLoginModal = false">
+      <div class="modal" @click.stop>
+        <div class="modal-header">
+          <h3>获取权限</h3>
+          <button class="close-btn" @click="showLoginModal = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>用户名</label>
+            <input v-model="loginForm.username" type="text" placeholder="请输入用户名" />
+          </div>
+          <div class="form-group">
+            <label>密码</label>
+            <input v-model="loginForm.password" type="password" placeholder="请输入密码" />
+          </div>
+          <div class="form-actions">
+            <button class="primary" @click="handleLogin" :disabled="loginLoading">
+              {{ loginLoading ? '登录中...' : '登录' }}
+            </button>
+            <button class="secondary" @click="showLoginModal = false">取消</button>
+          </div>
+          <div v-if="loginError" class="error-message">{{ loginError }}</div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import axios from 'axios';
 import hljs from 'highlight.js';
 import mermaid from 'mermaid';
 import { marked } from 'marked';
 import TreeNode from './components/TreeNode.vue';
+import './markdown.css';
+
+axios.interceptors.response.use(
+  response => {
+    updateLastActivity();
+    return response;
+  },
+  error => {
+    if (error.response?.status === 401) {
+      isLoggedIn.value = false;
+      lastActivityTime.value = 0;
+      localStorage.removeItem('username');
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('lastActivityTime');
+      error.value = '登录已过期，请重新登录';
+    }
+    return Promise.reject(error);
+  }
+);
 
 const tree = ref(null);
 const selectedFile = ref(null);
@@ -144,6 +206,15 @@ const sidebarVisible = ref(true);
 const sidebarWidth = ref(320);
 const sidebarHeight = ref(360);
 const showFileName = ref(false);
+const isLoggedIn = ref(false);
+const showLoginModal = ref(false);
+const loginForm = ref({ username: '', password: '' });
+const loginLoading = ref(false);
+const loginError = ref('');
+const permissionDenied = ref(false);
+const lastActivityTime = ref(0);
+const SESSION_TTL = 5 * 1000 * 60;
+const permissionExpired = ref(false);
 
 const codeThemeClass = computed(() =>
   codeTheme.value === 'light' ? 'code-theme-light' : 'code-theme-dark'
@@ -152,7 +223,7 @@ const wrapperStyle = computed(() => ({
   '--sidebar-width': `${sidebarWidth.value}px`
 }));
 const isEditable = computed(() =>
-  ['markdown', 'text', 'json'].includes(fileType.value)
+  isLoggedIn.value && ['markdown', 'text', 'json'].includes(fileType.value)
 );
 
 const displayPath = computed(() => {
@@ -215,13 +286,25 @@ renderer.image = (href, title, text) => {
   const resolved = resolveAssetPath(href);
   return `<img src="${resolved}" alt="${safeAlt}"${safeTitle} />`;
 };
-marked.setOptions({ renderer, breaks: true });
+// marked.setOptions({ renderer, breaks: true });
+marked.setOptions({
+  renderer,
+  breaks: true,
+  smartypants: false
+})
 
 mermaid.initialize({ startOnLoad: false, theme: 'default' });
 
 const renderedMarkdown = computed(() => {
   if (fileType.value !== 'markdown') return '';
   return marked.parse(fileContent.value || '');
+});
+
+const highlightedJson = computed(() => {
+  if (fileType.value !== 'json') return '';
+  const content = fileContent.value || '';
+  if (!content.trim()) return '';
+  return hljs.highlight(content, { language: 'json' }).value;
 });
 
 const fetchTree = async () => {
@@ -238,6 +321,7 @@ const fetchTree = async () => {
 };
 
 const selectNode = async (node) => {
+  updateLastActivity();
   selectedNode.value = node;
   selectedPath.value = node.path;
   if (node.type === 'dir') {
@@ -253,18 +337,56 @@ const selectNode = async (node) => {
   currentFileDir.value = currentDir.value;
   showFileName.value = true;
   error.value = '';
+  permissionDenied.value = false;
+  // permissionExpired.value = false;
   isEditing.value = false;
   try {
+    const headers = isLoggedIn.value ? { 'X-Session-Token': localStorage.getItem('username') || '' } : {};
     const response = await axios.get('/api/file', {
-      params: { path: node.path }
+      params: { path: node.path },
+      headers
     });
     fileContent.value = response.data.content;
     fileType.value = response.data.type;
+    if (fileType.value === 'json') {
+      formatJsonContent(fileContent.value, 'display');
+    }
     if (fileType.value === 'image' || fileType.value === 'pdf') {
-      imageUrl.value = `/api/raw?path=${encodeURIComponent(node.path)}`;
+      try {
+        const rawResponse = await axios.get('/api/raw', {
+          params: { path: node.path },
+          headers,
+          responseType: 'blob'
+        });
+        imageUrl.value = URL.createObjectURL(rawResponse.data);
+      } catch (rawErr) {
+        handleAuthError(rawErr);
+        if (rawErr.response?.status === 403) {
+          permissionDenied.value = true;
+          // permissionExpired.value = true;
+          isLoggedIn.value = false;
+          localStorage.setItem('isLoggedIn', 'false');
+          error.value = '暂无权限访问';
+          selectedFile.value = node;
+          fileType.value = '';
+        } else if (rawErr.response?.status !== 401) {
+          error.value = '无法加载文件内容。';
+        }
+      }
     }
   } catch (err) {
-    error.value = '无法加载文件内容。';
+    handleAuthError(err);
+    if (err.response?.status === 403) {
+      permissionDenied.value = true;
+      // permissionExpired.value = true;
+      isLoggedIn.value = false;
+      localStorage.setItem('isLoggedIn', 'false');
+      error.value = '暂无权限访问';
+      selectedFile.value = node;
+      fileType.value = '';
+    } else if (err.response?.status !== 401) {
+      error.value = '无法加载文件内容。';
+    }
   }
 };
 
@@ -296,6 +418,10 @@ const upload = async () => {
 };
 
 const createFolder = async () => {
+  if (!isLoggedIn.value) {
+    error.value = '请先登录以创建文件夹';
+    return;
+  }
   const name = window.prompt('请输入新建文件夹名称');
   if (!name) return;
   const parent = selectedNode.value?.type === 'dir' ? selectedNode.value.path : currentDir.value;
@@ -304,16 +430,25 @@ const createFolder = async () => {
       parent,
       name,
       type: 'dir'
+    }, {
+      headers: { 'X-Session-Token': localStorage.getItem('username') || '' }
     });
     await fetchTree();
   } catch (err) {
-    error.value = err?.response?.data?.error
-      ? `创建失败：${err.response.data.error}`
-      : '创建失败，请重试。';
+    handleAuthError(err);
+    if (err.response?.status !== 401) {
+      error.value = err?.response?.data?.error
+        ? `创建失败：${err.response.data.error}`
+        : '创建失败，请重试。';
+    }
   }
 };
 
 const createFile = async () => {
+  if (!isLoggedIn.value) {
+    error.value = '请先登录以创建文件';
+    return;
+  }
   const type = createFileType.value;
   const name = window.prompt('请输入文件名');
   if (!name) return;
@@ -332,49 +467,87 @@ const createFile = async () => {
       name: finalName,
       type: 'file',
       content
+    }, {
+      headers: { 'X-Session-Token': localStorage.getItem('username') || '' }
     });
     await fetchTree();
   } catch (err) {
-    error.value = err?.response?.data?.error
-      ? `创建失败：${err.response.data.error}`
-      : '创建失败，请重试。';
+    handleAuthError(err);
+    if (err.response?.status !== 401) {
+      error.value = err?.response?.data?.error
+        ? `创建失败：${err.response.data.error}`
+        : '创建失败，请重试。';
+    }
   }
 };
 
 const deleteSelected = async () => {
   if (!selectedNode.value) return;
+  if (!isLoggedIn.value) {
+    error.value = '请先登录以删除文件';
+    return;
+  }
   if (selectedNode.value.path === '') {
     error.value = '根目录不可删除。';
     return;
   }
   if (!window.confirm(`确定要删除 ${selectedNode.value.name} 吗？`)) return;
   try {
-    await axios.delete('/api/file', { params: { path: selectedNode.value.path } });
+    await axios.delete('/api/file', { 
+      params: { path: selectedNode.value.path },
+      headers: { 'X-Session-Token': localStorage.getItem('username') || '' }
+    });
     selectedNode.value = null;
     selectedFile.value = null;
     selectedPath.value = '';
     fileType.value = '';
     await fetchTree();
   } catch (err) {
-    error.value = err?.response?.data?.error
-      ? `删除失败：${err.response.data.error}`
-      : '删除失败，请重试。';
+    handleAuthError(err);
+    if (err.response?.status !== 401) {
+      error.value = err?.response?.data?.error
+        ? `删除失败：${err.response.data.error}`
+        : '删除失败，请重试。';
+    }
   }
 };
 
 const toggleEdit = () => {
+  updateLastActivity();
   isEditing.value = !isEditing.value;
   if (isEditing.value) {
     editContent.value = fileContent.value;
   }
 };
 
+const formatJsonContent = (content, target = 'display') => {
+  try {
+    const parsed = JSON.parse(content);
+    const formatted = JSON.stringify(parsed, null, 2);
+    if (target === 'edit') {
+      editContent.value = formatted;
+    } else {
+      fileContent.value = formatted;
+    }
+    return true;
+  } catch (err) {
+    return false;
+  }
+};
+
 const saveFile = async () => {
   if (!selectedFile.value) return;
+  if (!isLoggedIn.value) {
+    error.value = '请先登录以保存文件';
+    return;
+  }
   saving.value = true;
   try {
     await axios.put(`/api/file?path=${encodeURIComponent(selectedFile.value.path)}`, editContent.value, {
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 
+        'Content-Type': 'text/plain',
+        'X-Session-Token': localStorage.getItem('username') || ''
+      }
     });
     fileContent.value = editContent.value;
     const ext = selectedFile.value.name?.split('.').pop()?.toLowerCase();
@@ -387,7 +560,12 @@ const saveFile = async () => {
     }
     isEditing.value = false;
   } catch (err) {
-    error.value = '保存失败，请重试。';
+    handleAuthError(err);
+    if (err.response?.status !== 401) {
+      error.value = err?.response?.data?.error
+        ? `保存失败：${err.response.data.error}`
+        : '保存失败，请重试。';
+    }
   } finally {
     saving.value = false;
   }
@@ -410,11 +588,6 @@ watch(renderedMarkdown, async () => {
       img.setAttribute('src', resolved);
     });
   }
-});
-
-onMounted(() => {
-  fetchTree();
-  nextTick(() => updateSidebarMetrics());
 });
 
 const toggleTheme = () => {
@@ -457,6 +630,184 @@ const handleTabKey = (e) => {
     editContent.value = textarea.value;
   }
 };
+
+const handleAuthError = (err) => {
+  if (err.response?.status === 401) {
+    isLoggedIn.value = false;
+    lastActivityTime.value = 0;
+    localStorage.removeItem('username');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('lastActivityTime');
+    error.value = '登录已过期，请重新登录';
+  }
+};
+
+const updateLastActivity = () => {
+  if (isLoggedIn.value) {
+    const now = Date.now();
+    if (now - lastActivityTime.value > 1000) {
+      lastActivityTime.value = now;
+      localStorage.setItem('lastActivityTime', now.toString());
+    }
+  }
+};
+
+const handleLogin = async () => {
+  if (!loginForm.value.username || !loginForm.value.password) {
+    loginError.value = '请输入用户名和密码';
+    return;
+  }
+  
+  loginLoading.value = true;
+  loginError.value = '';
+  
+  try {
+    const response = await axios.post('/api/login', {
+      username: loginForm.value.username,
+      password: loginForm.value.password
+    });
+    
+    if (response.data.status === 'success') {
+      isLoggedIn.value = true;
+      permissionExpired.value = false;
+      lastActivityTime.value = Date.now();
+      // console.log(`[Login] Logged in at ${lastActivityTime.value}`);
+      localStorage.setItem('username', response.data.username);
+      localStorage.setItem('isLoggedIn', 'true');
+      localStorage.setItem('lastActivityTime', Date.now().toString());
+      showLoginModal.value = false;
+      loginForm.value = { username: '', password: '' };
+      error.value = '';
+    }
+  } catch (err) {
+    loginError.value = err.response?.data?.error || '登录失败，请重试';
+  } finally {
+    loginLoading.value = false;
+  }
+};
+
+const checkLoginStatus = async () => {
+  const storedUsername = localStorage.getItem('username');
+  const storedLoggedIn = localStorage.getItem('isLoggedIn');
+  const storedLastActivityTime = localStorage.getItem('lastActivityTime');
+  
+  if (storedUsername && storedLoggedIn === 'true' && storedLastActivityTime) {
+    lastActivityTime.value = parseInt(storedLastActivityTime);
+    
+    try {
+      const response = await axios.get('/api/tree');
+      // isLoggedIn.value = true;
+    } catch (err) {
+      if (err.response?.status === 401) {
+        isLoggedIn.value = false;
+        lastActivityTime.value = 0;
+        localStorage.removeItem('username');
+        localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('lastActivityTime');
+      } 
+    }
+  }
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlUsername = urlParams.get('username');
+  const urlPasswd = urlParams.get('passwd');
+  
+  if (urlUsername && urlPasswd) {
+    loginForm.value = { username: urlUsername, password: urlPasswd };
+    handleLogin();
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+};
+
+const checkLoginExpiration = () => {
+  if (isLoggedIn.value && lastActivityTime.value > 0) {
+    const now = Date.now();
+    const elapsed = now - lastActivityTime.value;
+    
+    // console.log(`[Login Check] Inactive: ${elapsed}ms, TTL: ${SESSION_TTL}ms, isLoggedIn: ${isLoggedIn.value}`);
+    
+    if (elapsed >= SESSION_TTL) {
+      if(isLoggedIn.value === true){
+        // console.log('[Login Check] Session expired due to inactivity, logging out...');
+        isLoggedIn.value = false;
+        localStorage.removeItem('username');
+        localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('lastActivityTime');
+        lastActivityTime.value = 0;
+      }
+    }
+  }
+};
+
+const restoreLoginState = () => {
+  const storedLoggedIn = localStorage.getItem('isLoggedIn');
+  if (storedLoggedIn !== null) {
+    // console.log(`[Restore Login State] Stored isLoggedIn: ${storedLoggedIn}`);
+    isLoggedIn.value = storedLoggedIn === 'true';
+  }
+};
+
+watch(isLoggedIn, (newValue) => {
+  if(newValue === false){
+    window.location.reload();
+    // console.log('[Watch] Logged out');
+  }
+});
+
+onMounted(() => {
+  restoreLoginState();
+  fetchTree();
+  nextTick(() => updateSidebarMetrics());
+  
+  setInterval(() => {
+    checkLoginExpiration();
+  }, 5000);
+  
+  const activityEvents = [
+    'click',
+    'keydown',
+    'keyup',
+    'mousedown',
+    'mouseup',
+    'mousemove',
+    'scroll',
+    'touchstart',
+    'touchend',
+    'touchmove',
+    'input',
+    'change',
+    'paste'
+  ];
+  
+  activityEvents.forEach(event => {
+    document.addEventListener(event, updateLastActivity, { passive: true });
+  });
+  // document.addEventListener('click', () => {
+  //   console.log(isLoggedIn.value);
+  // });
+});
+
+onUnmounted(() => {
+  const activityEvents = [
+    'click',
+    'keydown',
+    'keyup',
+    'mousedown',
+    'mouseup',
+    'mousemove',
+    'scroll',
+    'touchstart',
+    'touchend',
+    'touchmove',
+    'input',
+    'change',
+    'paste'
+  ];
+  
+  activityEvents.forEach(event => {
+    document.removeEventListener(event, updateLastActivity);
+  });
+});
 </script>
 
 <style scoped>
@@ -768,7 +1119,7 @@ const handleTabKey = (e) => {
 
 .pdf-preview iframe {
   width: 100%;
-  height: 70vh;
+  height: calc(100vh - 180px);
   border: none;
   border-radius: 12px;
   background: #f8fafc;
@@ -799,7 +1150,7 @@ const handleTabKey = (e) => {
   background: #94a3b8;
 }
 
-.markdown-area {
+/* .markdown-area {
   line-height: 1.7;
   max-height: calc(100vh - 180px);
   overflow-y: auto;
@@ -846,7 +1197,6 @@ const handleTabKey = (e) => {
 .markdown li {
   margin: 0.35em 0;
 }
-
 .markdown ul ul,
 .markdown ol ol,
 .markdown ul ol,
@@ -901,7 +1251,7 @@ const handleTabKey = (e) => {
   padding: 12px;
   border-radius: 10px;
   overflow: auto;
-}
+} */
 
 .editor {
   width: 100%;
@@ -922,6 +1272,27 @@ const handleTabKey = (e) => {
   outline: none;
   border-color: #4f46e5;
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.json-editor {
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  padding: 16px;
+  font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+  background: #0f172a;
+  resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.json-editor:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.3);
 }
 
 .text-preview pre {
@@ -975,6 +1346,167 @@ const handleTabKey = (e) => {
     position: static;
     max-height: none;
   }
+}
+
+.permission-link {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  text-align: center;
+}
+
+.permission-link a {
+  color: #3b82f6;
+  text-decoration: underline;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.permission-link a:hover {
+  color: #2563eb;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 18px;
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #0f172a;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #64748b;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.close-btn:hover {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.form-group input {
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #4f46e5;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.form-actions button {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.form-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: #dc2626;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 8px;
+  background: rgba(220, 38, 38, 0.1);
+  border-radius: 8px;
+}
+
+.permission-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.permission-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+}
+
+.permission-text {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.permission-subtext {
+  font-size: 0.95rem;
+  color: #64748b;
 }
 </style>
 
