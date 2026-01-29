@@ -45,7 +45,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['select']);
-const expanded = ref(true);
+const expanded = ref(false);
 
 const fileIcon = computed(() => {
   if (!props.node.name) return '📄';

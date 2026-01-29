@@ -1,0 +1,87 @@
+.json-preview {
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.json-preview::-webkit-scrollbar {
+    width: 8px;
+}
+
+.json-preview::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.json-preview::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.json-preview::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.json-code {
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    margin: 0;
+}
+
+.code-theme-light .json-code {
+    background: #f8fafc;
+    color: #0f172a;
+    border-color: rgba(148, 163, 184, 0.4);
+}
+
+.code-theme-dark .json-code {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.code-theme-light .json-code .hljs-attr {
+    color: #1d4ed8;
+}
+
+.code-theme-light .json-code .hljs-string {
+    color: #15803d;
+}
+
+.code-theme-light .json-code .hljs-number {
+    color: #b45309;
+}
+
+.code-theme-light .json-code .hljs-literal {
+    color: #7c3aed;
+}
+
+.code-theme-light .json-code .hljs-punctuation {
+    color: #64748b;
+}
+
+.code-theme-dark .json-code .hljs-attr {
+    color: #93c5fd;
+}
+
+.code-theme-dark .json-code .hljs-string {
+    color: #86efac;
+}
+
+.code-theme-dark .json-code .hljs-number {
+    color: #fdba74;
+}
+
+.code-theme-dark .json-code .hljs-literal {
+    color: #c4b5fd;
+}
+
+.code-theme-dark .json-code .hljs-punctuation {
+    color: #94a3b8;
+}
