@@ -33,6 +33,15 @@ type CreateRequest struct {
 	Content string `json:"content"`
 }
 
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type PermissionRequest struct {
+	Path string `json:"path"`
+}
+
 func main() {
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
@@ -46,6 +55,25 @@ func main() {
 	if err := os.MkdirAll(absDataDir, 0o755); err != nil {
 		panic(err)
 	}
+
+	userDir := filepath.Join(".", ".user")
+	absUserDir, err := filepath.Abs(userDir)
+	if err != nil {
+		panic(err)
+	}
+	if err := os.MkdirAll(absUserDir, 0o755); err != nil {
+		panic(err)
+	}
+
+	if err := InitPermissionManager(absUserDir); err != nil {
+		panic(err)
+	}
+
+	if err := InitUserManager(absUserDir); err != nil {
+		panic(err)
+	}
+
+	InitSessionManager()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/tree", func(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +95,68 @@ func main() {
 		writeJSON(w, node)
 	})
 
+	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var req LoginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		um := GetUserManager()
+		if um.Authenticate(req.Username, req.Password) {
+			token := GetSessionManager().CreateSession(req.Username)
+			writeJSON(w, map[string]string{"status": "success", "token": token, "username": req.Username})
+			return
+		}
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+	})
+
+	mux.HandleFunc("/api/permission", func(w http.ResponseWriter, r *http.Request) {
+		if !isAuthenticated(r) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		pm := GetPermissionManager()
+
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, map[string]interface{}{"permissions": pm.ListPermissions()})
+		case http.MethodPost:
+			var req PermissionRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid request body")
+				return
+			}
+			if err := pm.AddPermission(req.Path); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, map[string]string{"status": "added"})
+		case http.MethodDelete:
+			var req PermissionRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid request body")
+				return
+			}
+			if err := pm.RemovePermission(req.Path); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, map[string]string{"status": "removed"})
+		case http.MethodPut:
+			if err := pm.ClearAll(); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, map[string]string{"status": "cleared"})
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	})
+
 	mux.HandleFunc("/api/file", func(w http.ResponseWriter, r *http.Request) {
 		relPath := r.URL.Query().Get("path")
 		filePath, err := resolvePath(absDataDir, relPath)
@@ -86,6 +176,11 @@ func main() {
 				writeError(w, http.StatusBadRequest, "path is a directory")
 				return
 			}
+			pm := GetPermissionManager()
+			if pm.HasPermission(relPath) && !isAuthenticated(r) {
+				writeError(w, http.StatusForbidden, "no permission")
+				return
+			}
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
@@ -95,6 +190,10 @@ func main() {
 			resp := FileResponse{Type: fileType, Content: string(data), Name: info.Name()}
 			writeJSON(w, resp)
 		case http.MethodPut:
+			if !isAuthenticated(r) {
+				writeError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
 			lower := strings.ToLower(filePath)
 			if !(strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".json")) {
 				writeError(w, http.StatusBadRequest, "only markdown/txt/json files can be updated")
@@ -111,6 +210,10 @@ func main() {
 			}
 			writeJSON(w, map[string]string{"status": "ok"})
 		case http.MethodDelete:
+			if !isAuthenticated(r) {
+				writeError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
 			if strings.TrimSpace(relPath) == "" {
 				writeError(w, http.StatusBadRequest, "cannot delete root directory")
 				return
@@ -128,6 +231,10 @@ func main() {
 	mux.HandleFunc("/api/create", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if !isAuthenticated(r) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		var req CreateRequest
@@ -349,7 +456,7 @@ func spaHandler(distDir string) http.Handler {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Session-Token")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -368,4 +475,20 @@ func writeError(w http.ResponseWriter, status int, message string) {
 func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func isAuthenticated(r *http.Request) bool {
+	token := r.Header.Get("X-Session-Token")
+	if token == "" {
+		return false
+	}
+	
+	um := GetUserManager()
+	if err := um.checkFileModified(); err != nil {
+		fmt.Printf("User file modified: %v\n", err)
+		GetSessionManager().ClearAllSessions()
+		return false
+	}
+	
+	return GetSessionManager().ValidateAndTouch(token)
 }

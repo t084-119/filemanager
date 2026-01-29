@@ -1,0 +1,10 @@
+# 权限文件
+# 每行一个需要权限才能访问的文件或文件夹路径
+# 以 # 开头的行是注释，会被忽略
+# 路径是相对于 data 目录的
+
+# 示例：设置 data 目录下的私密文件夹
+ai_tools
+
+# 示例：设置 data 目录下的私密文件
+md_note_pic/golang/pic/enviroment_setting/go_install/1.png
