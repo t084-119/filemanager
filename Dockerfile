@@ -1,22 +1,32 @@
 FROM node:20 AS frontend-build
 WORKDIR /app/frontend
-COPY frontend/package.json ./
-RUN npm install
 COPY frontend/ ./
+RUN npm install && npm audit fix --force
 RUN npm run build
+#前端容器测试
+# EXPOSE 5173
+# ENV VITE_API_URL=http://filemanager-backend:8080
+# CMD ["npm", "run", "dev"]
 
-FROM golang:1.21 AS backend-build
-WORKDIR /app
-COPY backend/go.mod ./
-COPY backend/ ./backend/
+FROM golang:1.22 AS backend-build
 WORKDIR /app/backend
-RUN go build -o /app/filemanager
+COPY backend/*.go ./
+RUN go mod init filemanager && go mod tidy
+RUN go build .
+WORKDIR /app/backend/tools
+COPY backend/tools/*.go ./
+RUN go mod init tool && go mod tidy
+RUN go build .
+COPY backend/.user ../.user/
+# CMD ["./filemanager"]
 
 FROM debian:bookworm-slim
 WORKDIR /app
-ENV DATA_DIR=/data
-COPY --from=backend-build /app/filemanager ./filemanager
+COPY --from=backend-build /app/backend/filemanager ./backend/filemanager
+COPY --from=backend-build /app/backend/tools/tool ./tools/
+COPY --from=backend-build /app/backend/.user ./.user/
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
-RUN mkdir -p /data
+RUN chmod +x ./backend/filemanager
 EXPOSE 8080
-CMD ["/app/filemanager"]
+CMD ["./backend/filemanager"]
+
